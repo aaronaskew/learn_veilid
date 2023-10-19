@@ -6,10 +6,7 @@ on:
 
 jobs:
   test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
@@ -20,7 +17,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-build-nightly-${{ hashFiles('**/Cargo.toml') }}
+          key: ubuntu-latest-cargo-build-nightly-${{ hashFiles('**/Cargo.toml') }}
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
@@ -80,6 +77,16 @@ jobs:
         run: |
           SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
           CAPNPROTO_VERSION="1.0.1" # Keep in sync with veilid-core/build.rs
+          PACKAGE_NAME="capnproto-c++"
+
+          INSTALLED_VERSION=$(dpkg-query -W -f='${Version}\n' $PACKAGE_NAME | cut -d'-' -f1)
+
+          if [ "$INSTALLED_VERSION" == "$EXPECTED_VERSION" ]; then
+              echo "The expected version of $PACKAGE_NAME is installed."
+              exit 0
+          else
+              echo "The expected version of $PACKAGE_NAME is not installed. Installing..."
+          fi
 
           mkdir /tmp/capnproto-install
           pushd /tmp/capnproto-install
@@ -109,10 +116,21 @@ jobs:
               rm -rf /tmp/capnproto-install
           fi
       - name: Install protoc
-        run: |
-          
+        run: |          
           SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
           PROTOC_VERSION="24.3" # Keep in sync with veilid-core/build.rs
+
+          PACKAGE_NAME="protoc"
+
+          INSTALLED_VERSION=$(dpkg-query -W -f='${Version}\n' $PACKAGE_NAME | cut -d'-' -f1)
+
+          if [ "$INSTALLED_VERSION" == "$EXPECTED_VERSION" ]; then
+              echo "The expected version of $PACKAGE_NAME is installed."
+              exit 0
+          else
+              echo "The expected version of $PACKAGE_NAME is not installed. Installing..."
+          fi
+
 
           UNAME_M=$(uname -m)
           if [[ "$UNAME_M" == "x86_64" ]]; then 
