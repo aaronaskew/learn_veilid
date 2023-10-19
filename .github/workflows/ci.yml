@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-nightly-${{ hashFiles('**/Cargo.toml') }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install Veilid dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install -y openjdk-11-jdk-headless iproute2 curl build-essential cmake libssl-dev openssl file git pkg-config libdbus-1-dev libdbus-glib-1-dev libgirepository1.0-dev libcairo2-dev checkinstall unzip llvm wabt python3-pip
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -c clippy --profile default
+          source "$HOME/.cargo/env"
+          cat >> $HOME/.profile <<END
+          source "\$HOME/.cargo/env"
+          # ensure rustup is installed
+          if command -v rustup &> /dev/null; then 
+              echo '[X] rustup is available in the path'
+          else
+              echo 'rustup is not available in the path'
+              exit 1
+          fi
+
+          # ensure cargo is installed
+          if command -v cargo &> /dev/null; then 
+              echo '[X] cargo is available in the path'
+          else
+              echo 'cargo is not available in the path'
+              exit 1
+          fi
+
+          # ensure pip3 is installed
+          if command -v pip3 &> /dev/null; then 
+              echo '[X] pip3 is available in the path'
+          else
+              echo 'pip3 is not available in the path'
+              exit 1
+          fi
+
+          # install targets
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android wasm32-unknown-unknown
+
+          # install cargo packages
+          cargo install wasm-bindgen-cli wasm-pack cargo-edit
+
+          # install pip packages
+          pip3 install --upgrade bumpversion
+
+          # Install capnproto using the same mechanism as our earthly build
+          # $SCRIPTDIR/../scripts/earthly/install_capnproto.sh
+          # Install protoc using the same mechanism as our earthly build
+          # $SCRIPTDIR/../scripts/earthly/install_protoc.sh
+
+          echo "Install capnproto"
+          #!/bin/bash
+          SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+          CAPNPROTO_VERSION="1.0.1" # Keep in sync with veilid-core/build.rs
+
+          mkdir /tmp/capnproto-install
+          pushd /tmp/capnproto-install
+          curl -O https://capnproto.org/capnproto-c++-${CAPNPROTO_VERSION}.tar.gz
+          tar zxf capnproto-c++-${CAPNPROTO_VERSION}.tar.gz
+          cd capnproto-c++-${CAPNPROTO_VERSION}
+          ./configure --without-openssl
+          make -j$1 check
+          if [ "$EUID" -ne 0 ]; then
+              if command -v checkinstall &> /dev/null; then 
+                  sudo checkinstall -y
+                  cp *.deb ~
+              else 
+                  sudo make install
+
+              fi
+              popd
+              sudo rm -rf /tmp/capnproto-install
+          else
+              if command -v checkinstall &> /dev/null; then 
+                  checkinstall -y
+                  cp *.deb ~
+              else 
+                  make install
+              fi
+              popd
+              rm -rf /tmp/capnproto-install
+          fi
+
+          echo "Install protoc"
+          #!/bin/bash
+          SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+          PROTOC_VERSION="24.3" # Keep in sync with veilid-core/build.rs
+
+          UNAME_M=$(uname -m)
+          if [[ "$UNAME_M" == "x86_64" ]]; then 
+              PROTOC_ARCH=x86_64
+          elif [[ "$UNAME_M" == "aarch64" ]]; then 
+              PROTOC_ARCH=aarch_64
+          else 
+              echo Unsupported build architecture
+              exit 1
+          fi 
+
+          mkdir /tmp/protoc-install
+          pushd /tmp/protoc-install
+          curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-$PROTOC_ARCH.zip
+          unzip protoc-$PROTOC_VERSION-linux-$PROTOC_ARCH.zip
+          if [ "$EUID" -ne 0 ]; then
+              if command -v checkinstall &> /dev/null; then 
+                  sudo checkinstall --pkgversion=$PROTOC_VERSION -y cp -r bin include /usr/local/
+                  cp *.deb ~
+              else 
+            sudo cp -r bin include /usr/local/
+              fi
+              popd
+              sudo rm -rf /tmp/protoc-install
+          else
+              if command -v checkinstall &> /dev/null; then 
+                  checkinstall --pkgversion=$PROTOC_VERSION -y cp -r bin include /usr/local/
+                  cp *.deb ~
+              else 
+                  cp -r bin include /usr/local/
+              fi
+              popd
+              rm -rf /tmp/protoc-install
+          fi
+
+          cd ${{ github.workspace }}
+
+        if: runner.os == 'linux'
+      - name: Build & run tests
+        run: cargo test
+  all-doc-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-latest-cargo-build-nightly-${{ hashFiles('**/Cargo.toml') }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Run doc tests with all features (this also compiles README examples)
+        run: cargo test --doc --all-features
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-latest-cargo-build-nightly-${{ hashFiles('**/Cargo.toml') }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features
+      - name: Check format
+        run: cargo fmt --all -- --check
