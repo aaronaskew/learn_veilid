@@ -24,14 +24,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-      - name: Install Veilid dependencies
+      - name: Install apt dependencies
         run: |
           sudo apt update -y
           sudo apt install -y openjdk-11-jdk-headless iproute2 curl build-essential cmake libssl-dev openssl file git pkg-config libdbus-1-dev libdbus-glib-1-dev libgirepository1.0-dev libcairo2-dev checkinstall unzip llvm wabt python3-pip
+      - name: Install rustup
+        run: |
+          
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -c clippy --profile default
           source "$HOME/.cargo/env"
           cat >> $HOME/.profile <<END
           source "\$HOME/.cargo/env"
+
+
+      - name: Install Rust targets, cargo packages, and pip packages
+        run: |
           # ensure rustup is installed
           if command -v rustup &> /dev/null; then 
               echo '[X] rustup is available in the path'
@@ -69,9 +76,8 @@ jobs:
           # $SCRIPTDIR/../scripts/earthly/install_capnproto.sh
           # Install protoc using the same mechanism as our earthly build
           # $SCRIPTDIR/../scripts/earthly/install_protoc.sh
-
-          echo "Install capnproto"
-          #!/bin/bash
+      - name: Install capnproto
+        run: |
           SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
           CAPNPROTO_VERSION="1.0.1" # Keep in sync with veilid-core/build.rs
 
@@ -102,9 +108,9 @@ jobs:
               popd
               rm -rf /tmp/capnproto-install
           fi
-
-          echo "Install protoc"
-          #!/bin/bash
+      - name: Install protoc
+        run: |
+          
           SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
           PROTOC_VERSION="24.3" # Keep in sync with veilid-core/build.rs
 
@@ -142,11 +148,11 @@ jobs:
               rm -rf /tmp/protoc-install
           fi
 
-          cd ${{ github.workspace }}
-
-        if: runner.os == 'linux'
+          
       - name: Build & run tests
-        run: cargo test
+        run: |
+          cd ${{ github.workspace }}
+          cargo test
   all-doc-tests:
     runs-on: ubuntu-latest
     steps:
