@@ -175,6 +175,7 @@ jobs:
           cd ${{ github.workspace }}
           cargo test
   all-doc-tests:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -193,6 +194,7 @@ jobs:
       - name: Run doc tests with all features (this also compiles README examples)
         run: cargo test --doc --all-features
   lint:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
